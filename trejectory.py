@@ -1,17 +1,18 @@
 import cv2 as cv
 import numpy as np
+from ultralytics import YOLO
 
 class KalmanFilter:
     def __init__(self):
         self.kalman = cv.KalmanFilter(6, 2)
         dt = 1
         self.kalman.transitionMatrix = np.array([
-            [1, 0, dt, 0, 0.5*dt**2, 1], #x-pos
-            [0, 1, 0, dt, 0, 0.5*dt**2], #y-pos
-            [0, 0, 1, 0, dt, 0], #x-vel
-            [0, 0, 0, 1, 0, dt], #y-vel
-            [0, 0, 0, 0, 1, 0], #x-acc
-            [0, 0, 0, 0, 0, 1] #y-acc
+            [1, 0, dt, 0, 0.5*dt**2, 1],  # x-pos
+            [0, 1, 0, dt, 0, 0.5*dt**2],  # y-pos
+            [0, 0, 1, 0, dt, 0],          # x-vel
+            [0, 0, 0, 1, 0, dt],          # y-vel
+            [0, 0, 0, 0, 1, 0],           # x-acc
+            [0, 0, 0, 0, 0, 1]            # y-acc
         ], np.float32)
 
         self.kalman.measurementMatrix = np.array([
@@ -37,15 +38,10 @@ class KalmanFilter:
         predicted = self.kalman.predict()
         return (int(predicted[0]), int(predicted[1]))
 
+model = YOLO("yolo11n.pt")
 
 cap = cv.VideoCapture('test.mp4')
 filter = KalmanFilter()
-
-lower_color = np.array([100, 150, 50])  
-upper_color = np.array([140, 255, 255])
-
-kernel = np.ones((5, 5), np.uint8)
-
 total_error = 0
 valid_frames = 0
 
@@ -54,35 +50,37 @@ while cap.isOpened():
     if not ret:
         break
 
-    hsv_frame = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
-    mask = cv.inRange(hsv_frame, lower_color, upper_color)
-    mask = cv.morphologyEx(mask, cv.MORPH_OPEN, kernel)
-    mask = cv.morphologyEx(mask, cv.MORPH_CLOSE, kernel)
+    results = model.track(frame, persist=True)
 
-    contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    
-    for contour in contours:
-        if cv.contourArea(contour) > 500:
-            x1, y1, w, h = cv.boundingRect(contour)
-            x2 = x1 + w
-            y2 = y1 + h
-            cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    for result in results:
+        boxes = result.boxes.xyxy
+        class_ids = result.boxes.cls
+        scores = result.boxes.conf
+        print(result)
+
+        for box, class_id, score in zip(boxes, class_ids, scores):
+            if score < 0.5:
+                continue
+
+            x1, y1, x2, y2 = map(int, box)
+            w, h = x2 - x1, y2 - y1
 
             center_x = (x1 + x2) / 2
             center_y = (y1 + y2) / 2
 
             fx, fy = filter.Estimate(center_x, center_y)
-            
-            # prediction:
+
+            cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"{class_id} ({score:.2f})"
+            cv.putText(frame, label, (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
             cv.rectangle(frame, (fx - w // 2, fy - h // 2), (fx + w // 2, fy + h // 2), (0, 0, 255), 2)
-
-
 
             error = np.sqrt((fx - center_x) ** 2 + (fy - center_y) ** 2)
             total_error += error
             valid_frames += 1
 
-    cv.imshow("Ball Detection", frame)
+    cv.imshow("Object Detection and Tracking", frame)
 
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
@@ -90,7 +88,6 @@ while cap.isOpened():
 cap.release()
 cv.destroyAllWindows()
 
-# Calculate the average error and print it at the end
 if valid_frames > 0:
     average_error = total_error / valid_frames
     print(f"Average prediction error: {average_error:.2f} pixels")
