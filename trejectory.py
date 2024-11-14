@@ -110,7 +110,7 @@ while cap.isOpened():
     if not ret:
         break
 
-    results = model.track(frame, persist=True, tracker="bytetrack.yaml")
+    results = model.track(frame, persist=True, tracker="botsort.yaml")
 
     for result in results:
         boxes = result.boxes.xyxy
