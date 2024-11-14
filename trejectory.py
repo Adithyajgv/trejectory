@@ -3,11 +3,12 @@ from collections import defaultdict
 import numpy as np
 from ultralytics import YOLO
 import threading
+import math
 
 class KalmanFilter:
     def __init__(self):
         self.kalman = cv.KalmanFilter(6, 2)
-        dt = 1
+        dt = 0.25
         self.kalman.transitionMatrix = np.array([
             [1, 0, dt, 0, 0.5*dt**2, 1],  # x-pos
             [0, 1, 0, dt, 0, 0.5*dt**2],  # y-pos
@@ -97,7 +98,7 @@ valid_frames = 0
 
 #YOLO model:
 model = YOLO("yolo11s.pt")
-cap = cv.VideoCapture('multiple_test.mp4')
+cap = cv.VideoCapture('v4.mp4')
 
 #ID tracking:
 track_history = defaultdict(lambda: [])
