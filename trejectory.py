@@ -1,4 +1,5 @@
 import cv2 as cv
+from collections import defaultdict
 import numpy as np
 from ultralytics import YOLO
 
@@ -39,12 +40,13 @@ class KalmanFilter:
         return (int(predicted[0]), int(predicted[1]))
 
 model = YOLO("yolo11n.pt")
-
 cap = cv.VideoCapture('test.mp4')
 filter = KalmanFilter()
 total_error = 0
 valid_frames = 0
 
+track_history = defaultdict(lambda: [])
+track_ids = list()
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
@@ -56,12 +58,13 @@ while cap.isOpened():
         boxes = result.boxes.xyxy
         class_ids = result.boxes.cls
         scores = result.boxes.conf
-        print(result)
+        try:
+            track_ids = result.boxes.id.float().tolist()
+        except:
+            continue
 
-        for box, class_id, score in zip(boxes, class_ids, scores):
-            if score < 0.5:
-                continue
-
+        for box, class_id, score, track_id in zip(boxes, class_ids, scores, track_ids):
+            print(box)
             x1, y1, x2, y2 = map(int, box)
             w, h = x2 - x1, y2 - y1
 
@@ -70,8 +73,9 @@ while cap.isOpened():
 
             fx, fy = filter.Estimate(center_x, center_y)
 
+
             cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"{class_id} ({score:.2f})"
+            label = f"class: {class_id}, score: {score:.2f}, ID: {track_id}"
             cv.putText(frame, label, (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
             cv.rectangle(frame, (fx - w // 2, fy - h // 2), (fx + w // 2, fy + h // 2), (0, 0, 255), 2)
@@ -80,7 +84,9 @@ while cap.isOpened():
             total_error += error
             valid_frames += 1
 
-    cv.imshow("Object Detection and Tracking", frame)
+            track = track_history[track_id]
+            track.append((center_x, center_y))
+        cv.imshow("Object Detection and Tracking", frame)
 
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
