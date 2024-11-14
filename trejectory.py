@@ -63,13 +63,14 @@ def process(box, class_id, score, track_id):
     center_x = (x1 + x2) / 2
     center_y = (y1 + y2) / 2
 
-    if track_id not in KalmanDict:
-        with lock:
+    
+    with lock:
+        if track_id not in KalmanDict:
             KalmanDict[track_id] = KalmanFilter()
 
-    filter = KalmanDict[track_id]
-
-    fx, fy = filter.Estimate(center_x, center_y)
+        filter = KalmanDict[track_id]
+        fx, fy = filter.Estimate(center_x, center_y)
+        
 
 
     cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
