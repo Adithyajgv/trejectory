@@ -2,6 +2,7 @@ import cv2 as cv
 from collections import defaultdict
 import numpy as np
 from ultralytics import YOLO
+import threading
 
 class KalmanFilter:
     def __init__(self):
@@ -39,14 +40,52 @@ class KalmanFilter:
         predicted = self.kalman.predict()
         return (int(predicted[0]), int(predicted[1]))
 
+
+# process of iding and labling each object: function for multithreding
+def process(box, class_id, score, track_id):
+    x1, y1, x2, y2 = map(int, box)
+    w, h = x2 - x1, y2 - y1
+
+    center_x = (x1 + x2) / 2
+    center_y = (y1 + y2) / 2
+
+    if track_id not in KalmanDict:
+        with lock:
+            KalmanDict[track_id] = KalmanFilter()
+
+    filter = KalmanDict[track_id]
+
+    fx, fy = filter.Estimate(center_x, center_y)
+
+
+    cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    label = f"class: {class_id}, score: {score:.2f}, ID: {track_id}"
+    cv.putText(frame, label, (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+    cv.rectangle(frame, (fx - w // 2, fy - h // 2), (fx + w // 2, fy + h // 2), (0, 0, 255), 2)
+
+    error = np.sqrt((fx - center_x) ** 2 + (fy - center_y) ** 2)
+
+    with lock:
+        total_error += error
+        valid_frames += 1
+        track = track_history[track_id]
+        track.append((center_x, center_y))
+
+
+
+
 model = YOLO("yolo11n.pt")
-cap = cv.VideoCapture('test.mp4')
-filter = KalmanFilter()
+cap = cv.VideoCapture('multiple_test.mp4')
 total_error = 0
 valid_frames = 0
 
 track_history = defaultdict(lambda: [])
 track_ids = list()
+lock = threading.Lock()
+
+KalmanDict = dict()
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
@@ -62,31 +101,17 @@ while cap.isOpened():
             track_ids = result.boxes.id.float().tolist()
         except:
             continue
-
+        
+        thread_list = list()
         for box, class_id, score, track_id in zip(boxes, class_ids, scores, track_ids):
-            print(box)
-            x1, y1, x2, y2 = map(int, box)
-            w, h = x2 - x1, y2 - y1
-
-            center_x = (x1 + x2) / 2
-            center_y = (y1 + y2) / 2
-
-            fx, fy = filter.Estimate(center_x, center_y)
-
-
-            cv.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"class: {class_id}, score: {score:.2f}, ID: {track_id}"
-            cv.putText(frame, label, (x1, y1 - 10), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-            cv.rectangle(frame, (fx - w // 2, fy - h // 2), (fx + w // 2, fy + h // 2), (0, 0, 255), 2)
-
-            error = np.sqrt((fx - center_x) ** 2 + (fy - center_y) ** 2)
-            total_error += error
-            valid_frames += 1
-
-            track = track_history[track_id]
-            track.append((center_x, center_y))
+            thread = threading.Thread(target=process, args=(box, class_id, score, track_id))
+            thread_list.append(thread)
+            thread.start()
         cv.imshow("Object Detection and Tracking", frame)
+
+        for thread in thread_list:
+            thread.join()
+
 
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
