@@ -41,8 +41,12 @@ class KalmanFilter:
         return (int(predicted[0]), int(predicted[1]))
 
 
+
+
 # process of iding and labling each object: function for multithreding
 def process(box, class_id, score, track_id):
+    global total_error
+    global valid_frames
     x1, y1, x2, y2 = map(int, box)
     w, h = x2 - x1, y2 - y1
 
@@ -71,21 +75,26 @@ def process(box, class_id, score, track_id):
         valid_frames += 1
         track = track_history[track_id]
         track.append((center_x, center_y))
+        if len(track) > 15:
+            track.pop(0)
 
 
-
-
-model = YOLO("yolo11n.pt")
-cap = cv.VideoCapture('multiple_test.mp4')
+#error vars:
 total_error = 0
 valid_frames = 0
 
+
+#YOLO model:
+model = YOLO("yolo11s.pt")
+cap = cv.VideoCapture('multiple_test.mp4')
+
+#ID tracking:
 track_history = defaultdict(lambda: [])
 track_ids = list()
 lock = threading.Lock()
-
 KalmanDict = dict()
 
+#"main"
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
@@ -119,6 +128,7 @@ while cap.isOpened():
 cap.release()
 cv.destroyAllWindows()
 
+#err calculation 
 if valid_frames > 0:
     average_error = total_error / valid_frames
     print(f"Average prediction error: {average_error:.2f} pixels")
