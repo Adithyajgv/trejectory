@@ -32,11 +32,21 @@ class KalmanFilter:
         ], np.float32)
 
         self.kalman.measurementNoiseCov = np.eye(2, dtype=np.float32) * 1e-1
-        self.kalman.errorCovPost = np.eye(6, dtype=np.float32)
+
+        #self.kalman.errorCovPost = np.eye(6, dtype=np.float32)
+
+        self.initializing = True
 
     def Estimate(self, coordX, coordY):
         measured = np.array([[np.float32(coordX)], [np.float32(coordY)]])
+        
         self.kalman.correct(measured)
+
+        if self.initializing:
+            self.kalman.statePost = np.array([[coordX], [coordY], [0], [0], [0], [0]], np.float32)
+            self.kalman.errorCovPost = np.eye(6, dtype=np.float32) * 5
+            self.initializing = False
+
         predicted = self.kalman.predict()
         return (int(predicted[0]), int(predicted[1]))
 
@@ -100,7 +110,7 @@ while cap.isOpened():
     if not ret:
         break
 
-    results = model.track(frame, persist=True)
+    results = model.track(frame, persist=True, tracker="bytetrack.yaml")
 
     for result in results:
         boxes = result.boxes.xyxy
