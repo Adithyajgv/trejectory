@@ -1,0 +1,6 @@
+opencv-python
+collections
+numpy
+ultralytics
+threading
+math
